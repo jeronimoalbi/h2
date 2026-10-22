@@ -1701,14 +1701,16 @@ impl proto::Peer for Peer {
         // A request translated from HTTP/1 must not include the :authority
         // header
         if let Some(authority) = pseudo.authority {
-            let maybe_authority = uri::Authority::from_maybe_shared(authority.clone().into_inner());
-            parts.authority = Some(maybe_authority.or_else(|why| {
-                malformed!(
-                    "malformed headers: malformed authority ({:?}): {}",
-                    authority,
-                    why,
-                )
-            })?);
+            // Downstream patch for snitch (https://github.com/jeronimoalbi/snitch).
+            // Upstream rejects an invalid authority with a PROTOCOL_ERROR.
+            // grpc-go 1.32, used by opensnitchd, sends the unix socket path as
+            // the :authority, which is not a valid authority, so every call from
+            // the daemon failed. gRPC doesn't use the authority, so a
+            // placeholder is substituted.
+            parts.authority = Some(
+                uri::Authority::from_maybe_shared(authority.into_inner())
+                    .unwrap_or_else(|_| uri::Authority::from_static("localhost")),
+            );
         }
 
         // A :scheme is required, except CONNECT.
